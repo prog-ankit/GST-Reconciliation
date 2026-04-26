@@ -4,208 +4,182 @@
     <meta charset="UTF-8" />
     <title>GST Reconciliation Tool</title>
 
-    <!-- Bootstrap CSS -->
-    <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
 
     <style>
-        body {
-          background-color: #f5f7fa;
-        }
-        .card {
-          border-radius: 12px;
-        }
-        .btn-primary {
-          width: 100%;
-        }
-        #loader {
-          display: none;
-        }
+        body { background-color: #f5f7fa; }
+        .card { border-radius: 12px; }
+        #loader { display: none; }
+        #progressContainer { display: none; }
     </style>
 </head>
+
 <body>
 <div class="container mt-5">
-    <!-- HEADER -->
+
     <div class="text-center mb-4">
         <h2 class="fw-bold">GST Reconciliation Tool</h2>
         <p class="text-muted">Compare Tally vs GST Portal Excel Data</p>
     </div>
 
-    <!-- UPLOAD CARD -->
+    <!-- UPLOAD -->
     <div class="card shadow-sm p-4">
         <form id="uploadForm">
+
             <div class="mb-3">
-                <label class="form-label">Upload Tally File (.xlsx)</label>
-                <input
-                        type="file"
-                        class="form-control"
-                        name="tally"
-                        accept=".xlsx"
-                        required
-                />
+                <label class="form-label">Upload Tally File</label>
+                <input type="file" class="form-control" name="tally" required>
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Upload GST Portal File (.xlsx)</label>
-                <input
-                        type="file"
-                        class="form-control"
-                        name="gst"
-                        accept=".xlsx"
-                        required
-                />
+                <label class="form-label">Upload GST File</label>
+                <input type="file" class="form-control" name="gst" required>
             </div>
 
-            <div class="row mt-3">
+            <div class="row">
                 <div class="col-md-6">
-                    <button type="submit" class="btn btn-primary w-100">
-                        Reconcile Files
-                    </button>
+                    <button class="btn btn-primary w-100">Reconcile</button>
                 </div>
                 <div class="col-md-6">
-                    <button
-                            type="button"
-                            class="btn btn-outline-secondary w-100"
-                            onclick="resetForm()"
-                    >
-                        Reset / Discard
+                    <button type="button" class="btn btn-outline-secondary w-100" onclick="resetForm()">
+                        Reset
                     </button>
                 </div>
             </div>
+
         </form>
     </div>
 
-    <!-- LOADER -->
-    <div id="loader" class="text-center mt-4">
-        <div class="spinner-border text-primary" role="status"></div>
-        <p class="mt-2">Processing... please wait</p>
+    <!-- PROGRESS BAR -->
+    <div id="progressContainer" class="mt-4">
+        <label class="form-label">Processing...</label>
+        <div class="progress">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                 style="width: 0%">0%</div>
+        </div>
     </div>
 
     <!-- RESULT -->
     <div id="result" class="mt-4"></div>
+
 </div>
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
-    document
-      .getElementById("uploadForm")
-      .addEventListener("submit", async function (e) {
+
+    let progressInterval;
+
+    document.getElementById("uploadForm").addEventListener("submit", async function(e) {
         e.preventDefault();
 
-        const form = e.target;
-        const formData = new FormData(form);
+        const formData = new FormData(this);
 
-        const tallyFile = form.querySelector('input[name="tally"]').files[0];
-        const gstFile = form.querySelector('input[name="gst"]').files[0];
-
-        // Basic validation
-        if (!tallyFile || !gstFile) {
-          alert("Please upload both files");
-          return;
-        }
-
-        document.getElementById("loader").style.display = "block";
         document.getElementById("result").innerHTML = "";
+        document.getElementById("progressContainer").style.display = "block";
+
+        startFakeProgress();
 
         try {
-          const response = await fetch("/api/reconcile", {
-            method: "POST",
-            body: formData,
-          });
+            const response = await fetch("/api/reconcile", {
+                method: "POST",
+                body: formData
+            });
 
-          if (!response.ok) {
-            throw new Error("Server error");
-          }
+            const data = await response.json();
 
-          const data = await response.json();
+            stopProgress();
 
-          document.getElementById("loader").style.display = "none";
+            showResult(data);
 
-          document.getElementById("result").innerHTML = `
-              <div class="card shadow-sm p-4">
-                  <h4 class="mb-4 text-center">Reconciliation Summary</h4>
-
-                  <div class="row text-center">
-
-                      <div class="col-md-4 mb-3">
-                          <div class="alert alert-warning">
-                              <h3>${data.missingInTally}</h3>
-                              <p class="mb-0">Missing in Tally</p>
-                          </div>
-                      </div>
-
-                      <div class="col-md-4 mb-3">
-                          <div class="alert alert-info">
-                              <h3>${data.missingInGST}</h3>
-                              <p class="mb-0">Missing in GST</p>
-                          </div>
-                      </div>
-
-                      <div class="col-md-4 mb-3">
-                          <div class="alert alert-danger">
-                              <h3>${data.mismatches}</h3>
-                              <p class="mb-0">Mismatches</p>
-                          </div>
-                      </div>
-
-                  </div>
-
-                  <div class="text-center mt-4">
-                      <button class="btn btn-success btn-lg"
-                          onclick="downloadReport('${data.fileName}')">
-                          ⬇ Download Report
-                      </button>
-                  </div>
-              </div>
-          `;
-        } catch (error) {
-          document.getElementById("loader").style.display = "none";
-
-          document.getElementById("result").innerHTML = `
-              <div class="alert alert-danger text-center">
-                  Something went wrong. Please try again.
-              </div>
-          `;
+        } catch (err) {
+            stopProgress();
+            document.getElementById("result").innerHTML =
+                `<div class="alert alert-danger text-center">Error occurred</div>`;
         }
-      });
-
-    document.querySelectorAll('input[type="file"]').forEach((input) => {
-      input.addEventListener("change", function () {
-        if (this.files.length > 0) {
-          this.nextElementSibling?.remove();
-          const p = document.createElement("small");
-          p.className = "text-success";
-          p.innerText = "Selected: " + this.files[0].name;
-          this.parentNode.appendChild(p);
-        }
-      });
     });
-    // DOWNLOAD HANDLER
+
+
+    // 🔵 Fake Progress Logic
+    function startFakeProgress() {
+        let progress = 0;
+        const bar = document.getElementById("progressBar");
+
+        progressInterval = setInterval(() => {
+            if (progress < 90) {   // stop at 90% until backend finishes
+                progress += Math.random() * 5;
+                progress = Math.min(progress, 90);
+                bar.style.width = progress + "%";
+                bar.innerText = Math.floor(progress) + "%";
+            }
+        }, 500);
+    }
+
+    function stopProgress() {
+        clearInterval(progressInterval);
+
+        const bar = document.getElementById("progressBar");
+        bar.style.width = "100%";
+        bar.innerText = "100%";
+
+        setTimeout(() => {
+            document.getElementById("progressContainer").style.display = "none";
+        }, 500);
+    }
+
+
+    // ✅ RESULT UI
+    function showResult(data) {
+        document.getElementById("result").innerHTML = `
+            <div class="card p-4 shadow-sm">
+                <h4 class="text-center mb-4">Reconciliation Summary</h4>
+
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="alert alert-warning">
+                            <h3>${data.missingInTally}</h3>
+                            Missing in Tally
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="alert alert-info">
+                            <h3>${data.missingInGST}</h3>
+                            Missing in GST
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="alert alert-danger">
+                            <h3>${data.mismatches}</h3>
+                            Mismatches
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button class="btn btn-success btn-lg"
+                        onclick="downloadReport('${data.fileName}')">
+                        ⬇ Download Report
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+
+    // DOWNLOAD
     function downloadReport(fileName) {
-      window.open(
-        `/api/download?fileName=${encodeURIComponent(fileName)}`,
-        "_blank",
-      );
+        window.open(`/api/download?fileName=${encodeURIComponent(fileName)}`, "_blank");
     }
 
+
+    // RESET
     function resetForm() {
-      const form = document.getElementById("uploadForm");
-
-      // Reset form inputs
-      form.reset();
-
-      // Clear result section
-      document.getElementById("result").innerHTML = "";
-
-      // Hide loader if visible
-      document.getElementById("loader").style.display = "none";
-
-      document.querySelectorAll(".text-success").forEach(el => el.remove());
+        document.getElementById("uploadForm").reset();
+        document.getElementById("result").innerHTML = "";
+        document.getElementById("progressContainer").style.display = "none";
     }
+
 </script>
+
 </body>
 </html>
