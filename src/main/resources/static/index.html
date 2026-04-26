@@ -22,6 +22,13 @@
         <p class="text-muted">Compare Tally vs GST Portal Excel Data</p>
     </div>
 
+    <!-- TEMPLATE DOWNLOAD -->
+    <div class="mb-3 text-center">
+        <a href="/static/templates/gst-template.xlsx" class="btn btn-sm btn-primary">
+            Download Sample Excel Template
+        </a>
+    </div>
+
     <!-- UPLOAD -->
     <div class="card shadow-sm p-4">
         <form id="uploadForm">
@@ -97,14 +104,13 @@
         }
     });
 
-
     // 🔵 Fake Progress Logic
     function startFakeProgress() {
         let progress = 0;
         const bar = document.getElementById("progressBar");
 
         progressInterval = setInterval(() => {
-            if (progress < 90) {   // stop at 90% until backend finishes
+            if (progress < 90) {
                 progress += Math.random() * 5;
                 progress = Math.min(progress, 90);
                 bar.style.width = progress + "%";
@@ -124,7 +130,6 @@
             document.getElementById("progressContainer").style.display = "none";
         }, 500);
     }
-
 
     // ✅ RESULT UI
     function showResult(data) {
@@ -165,12 +170,10 @@
         `;
     }
 
-
     // DOWNLOAD
     function downloadReport(fileName) {
         window.open(`/api/download?fileName=${encodeURIComponent(fileName)}`, "_blank");
     }
-
 
     // RESET
     function resetForm() {
