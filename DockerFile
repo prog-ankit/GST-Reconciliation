@@ -1,0 +1,14 @@
+# Use Java 17
+FROM eclipse-temurin:17-jdk
+
+WORKDIR /app
+
+# Copy project files
+COPY . .
+
+# Build the JAR
+RUN chmod +x mvnw
+RUN ./mvnw clean package -DskipTests
+
+# Run the application
+CMD ["java", "-jar", "target/gst_reconcillation-0.0.1-SNAPSHOT.jar"]
