@@ -4,14 +4,14 @@ import org.apache.poi.ss.usermodel.*;
 import org.tally.gst_reconcillation.model.InvoiceRecord;
 
 public class GeneralUtility {
-    public static boolean isMismatch(InvoiceRecord a, InvoiceRecord b) {
-        return diff(a.getTaxableValue(), b.getTaxableValue())
-                || diff(a.getIgst(), b.getIgst())
-                || diff(a.getCgst(), b.getCgst());
+    public static boolean isMismatch(InvoiceRecord a, InvoiceRecord b, double tolerance) {
+        return diff(a.getTaxableValue(), b.getTaxableValue(), tolerance)
+                || diff(a.getIgst(), b.getIgst(), tolerance)
+                || diff(a.getCgst(), b.getCgst(), tolerance);
     }
 
-    public static boolean diff(double a, double b) {
-        return Math.abs(a - b) > 0.01;
+    public static boolean diff(double a, double b, double tolerance) {
+        return Math.abs(a - b) > tolerance;
     }
 
     public static String getDirection(double gstVal, double tallyVal) {
@@ -37,5 +37,14 @@ public class GeneralUtility {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    public static String normalizeKeyPart(String value) {
+        if (value == null) return "";
+
+        // Remove all non-alphanumeric characters
+        return value.replaceAll("[^A-Za-z0-9]", "")
+                .toUpperCase()
+                .trim();
     }
 }

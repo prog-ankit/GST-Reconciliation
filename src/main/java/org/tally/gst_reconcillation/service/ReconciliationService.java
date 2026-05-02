@@ -16,7 +16,7 @@ import java.util.*;
 @Service
 public class ReconciliationService {
 
-    public ReconciliationResultDto process(String tallyPath, String gstPath) throws Exception {
+    public ReconciliationResultDto process(String tallyPath, String gstPath, double tolerance) throws Exception {
 
         // Pre-size maps for performance
         Map<String, InvoiceRecord> tallyMap = loadFileToMap(tallyPath, 20000);
@@ -33,7 +33,7 @@ public class ReconciliationService {
 
             if (tallyRec == null) {
                 missingInTally.add(entry.getValue());
-            } else if (GeneralUtility.isMismatch(entry.getValue(), tallyRec)) {
+            } else if (GeneralUtility.isMismatch(entry.getValue(), tallyRec, tolerance)) {
                 mismatches.add(entry.getValue());
             }
         }
@@ -55,7 +55,8 @@ public class ReconciliationService {
                 missingInTally,
                 missingInGST,
                 mismatches,
-                tallyMap
+                tallyMap,
+                tolerance
         );
 
         ReconciliationResultDto result = new ReconciliationResultDto();
@@ -85,7 +86,7 @@ public class ReconciliationService {
                 String gstin = formatter.formatCellValue(row.getCell(1)).trim().toUpperCase();
                 String invoiceNo = formatter.formatCellValue(row.getCell(3)).trim().toUpperCase();
 
-                String key = gstin + "_" + invoiceNo;
+                String key = GeneralUtility.normalizeKeyPart(gstin) + "_" + GeneralUtility.normalizeKeyPart(invoiceNo);
 
                 InvoiceRecord record = new InvoiceRecord(
                         formatter.formatCellValue(row.getCell(0)),
@@ -111,7 +112,9 @@ public class ReconciliationService {
                                   List<InvoiceRecord> missingInTally,
                                   List<InvoiceRecord> missingInGST,
                                   List<InvoiceRecord> mismatches,
-                                  Map<String, InvoiceRecord> tallyMap) throws Exception {
+                                  Map<String, InvoiceRecord> tallyMap,
+                                  double tolerance) throws Exception {
+
         SXSSFWorkbook workbook = new SXSSFWorkbook(100);
         workbook.setCompressTempFiles(true);
         try (FileOutputStream fos = new FileOutputStream(filePath)) {
@@ -123,7 +126,7 @@ public class ReconciliationService {
 
             writeNormalSheet(workbook, "Missing_In_Tally", missingInTally);
             writeNormalSheet(workbook, "Missing_In_GST", missingInGST);
-            writeMismatchSheet(workbook, "Mismatch_Report", mismatches, tallyMap, redStyle);
+            writeMismatchSheet(workbook, mismatches, tallyMap, redStyle, tolerance);
 
             workbook.write(fos);
         } finally {
@@ -164,12 +167,12 @@ public class ReconciliationService {
 
     // ================= MISMATCH SHEET =================
     private void writeMismatchSheet(Workbook workbook,
-                                    String sheetName,
                                     List<InvoiceRecord> mismatches,
                                     Map<String, InvoiceRecord> tallyMap,
-                                    CellStyle redStyle) {
+                                    CellStyle redStyle,
+                                    double tolerance) {
 
-        Sheet sheet = workbook.createSheet(sheetName);
+        Sheet sheet = workbook.createSheet("Mismatch_Report");
 
         String[] columns = {
                 "Month", "GSTIN", "Party Name", "Invoice Number", "Invoice Date",
@@ -184,12 +187,10 @@ public class ReconciliationService {
         int rowNum = 1;
 
         for (InvoiceRecord gstRec : mismatches) {
-
-            String key = gstRec.getGstin() + "_" + gstRec.getInvoiceNumber();
+            String key = GeneralUtility.normalizeKeyPart(gstRec.getGstin()) + "_" + GeneralUtility.normalizeKeyPart(gstRec.getInvoiceNumber());
             InvoiceRecord tallyRec = tallyMap.get(key);
 
             Row row = sheet.createRow(rowNum++);
-
             row.createCell(0).setCellValue(gstRec.getMonth());
             row.createCell(1).setCellValue(gstRec.getGstin());
             row.createCell(2).setCellValue(gstRec.getPartyName());
@@ -202,7 +203,7 @@ public class ReconciliationService {
             // Taxable
             Cell tv = row.createCell(5);
             tv.setCellValue(gstRec.getTaxableValue());
-            if (GeneralUtility.diff(gstRec.getTaxableValue(), tallyRec.getTaxableValue())) {
+            if (GeneralUtility.diff(gstRec.getTaxableValue(), tallyRec.getTaxableValue(), tolerance)) {
                 tv.setCellStyle(redStyle);
                 direction = GeneralUtility.getDirection(gstRec.getTaxableValue(), tallyRec.getTaxableValue());
                 GeneralUtility.appendStatus(status, "Tax. Value");
@@ -211,7 +212,7 @@ public class ReconciliationService {
             // IGST
             Cell igst = row.createCell(6);
             igst.setCellValue(gstRec.getIgst());
-            if (GeneralUtility.diff(gstRec.getIgst(), tallyRec.getIgst())) {
+            if (GeneralUtility.diff(gstRec.getIgst(), tallyRec.getIgst(), tolerance)) {
                 igst.setCellStyle(redStyle);
                 if (direction.isEmpty()) {
                     direction = GeneralUtility.getDirection(gstRec.getIgst(), tallyRec.getIgst());
@@ -222,7 +223,7 @@ public class ReconciliationService {
             // CGST
             Cell cgst = row.createCell(7);
             cgst.setCellValue(gstRec.getCgst());
-            if (GeneralUtility.diff(gstRec.getCgst(), tallyRec.getCgst())) {
+            if (GeneralUtility.diff(gstRec.getCgst(), tallyRec.getCgst(), tolerance)) {
                 cgst.setCellStyle(redStyle);
                 if (direction.isEmpty()) {
                     direction = GeneralUtility.getDirection(gstRec.getCgst(), tallyRec.getCgst());

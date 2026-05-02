@@ -19,7 +19,10 @@ public class ReconciliationController {
     private ReconciliationService service;
 
     @PostMapping("/reconcile")
-    public ReconciliationResultDto reconcile(@RequestParam("tally") MultipartFile tallyFile, @RequestParam("gst") MultipartFile gstFile) throws Exception {
+    public ReconciliationResultDto reconcile(@RequestParam("tally") MultipartFile tallyFile,
+                                             @RequestParam("gst") MultipartFile gstFile,
+                                             @RequestParam("tolerance") double tolerance
+    ) throws Exception {
         String baseDir = System.getProperty("java.io.tmpdir");
 
         File dir = new File(baseDir);
@@ -28,10 +31,10 @@ public class ReconciliationController {
         }
 
         String tallyPath = baseDir + "/" + UUID.randomUUID() + "_tally.xlsx";
-        String gstPath   = baseDir + "/" + UUID.randomUUID() + "_gst.xlsx";
+        String gstPath = baseDir + "/" + UUID.randomUUID() + "_gst.xlsx";
         tallyFile.transferTo(new File(tallyPath));
         gstFile.transferTo(new File(gstPath));
-        return service.process(tallyPath, gstPath);
+        return service.process(tallyPath, gstPath, tolerance);
     }
 
     @GetMapping("/download")

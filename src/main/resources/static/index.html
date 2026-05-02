@@ -43,6 +43,18 @@
                 <input type="file" class="form-control" name="gst" required>
             </div>
 
+            <div class="mb-3">
+                <label class="form-label">Tolerance Limit (0–10)</label>
+                <input type="number"
+                       class="form-control"
+                       name="tolerance"
+                       min="0"
+                       max="10"
+                       step="0.1"
+                       value="0"
+                       required>
+            </div>
+
             <div class="row">
                 <div class="col-md-6">
                     <button class="btn btn-primary w-100">Reconcile</button>
