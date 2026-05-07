@@ -6,22 +6,28 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.tally.gst_reconcillation.dto.FilterRequestDto;
 import org.tally.gst_reconcillation.dto.ReconciliationResultDto;
 import org.tally.gst_reconcillation.service.ReconciliationService;
 
 import java.io.File;
 import java.util.UUID;
-
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/reconcile")
 public class ReconciliationController {
-    @Autowired
-    private ReconciliationService service;
 
-    @PostMapping("/reconcile")
-    public ReconciliationResultDto reconcile(@RequestParam("tally") MultipartFile tallyFile,
-                                             @RequestParam("gst") MultipartFile gstFile,
-                                             @RequestParam("tolerance") double tolerance
+    private final ReconciliationService service;
+
+    public ReconciliationController(ReconciliationService service) {
+        this.service = service;
+    }
+
+    // ================= STEP 1 =================
+    @PostMapping
+    public ReconciliationResultDto reconcile(
+            @RequestParam("tally") MultipartFile tallyFile,
+            @RequestParam("gst") MultipartFile gstFile,
+            @RequestParam("tolerance") double tolerance
     ) throws Exception {
         String baseDir = System.getProperty("java.io.tmpdir");
 
@@ -37,17 +43,9 @@ public class ReconciliationController {
         return service.process(tallyPath, gstPath, tolerance);
     }
 
-    @GetMapping("/download")
-    public ResponseEntity<UrlResource> downloadFile(@RequestParam String fileName) throws Exception {
-        String baseDir = System.getProperty("java.io.tmpdir");
-        File file = new File(baseDir + "/" + fileName);
-        if (!file.exists()) {
-            return ResponseEntity.notFound().build();
-        }
-        UrlResource resource = new UrlResource(file.toURI());
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + file.getName() + "\"")
-                .body(resource);
+    // ================= STEP 2 =================
+    @PostMapping("/filter")
+    public ReconciliationResultDto filter(@RequestBody FilterRequestDto request) throws Exception {
+        return service.filterByField(request.jobId, request.field);
     }
 }

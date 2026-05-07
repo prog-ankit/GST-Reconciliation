@@ -4,6 +4,8 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import org.tally.gst_reconcillation.application.context.ReconciliationCache;
+import org.tally.gst_reconcillation.application.context.ReconciliationContext;
 import org.tally.gst_reconcillation.dto.ReconciliationResultDto;
 import org.tally.gst_reconcillation.model.InvoiceRecord;
 import org.tally.gst_reconcillation.util.GeneralUtility;
@@ -16,17 +18,31 @@ import java.util.*;
 @Service
 public class ReconciliationService {
 
-    public ReconciliationResultDto process(String tallyPath, String gstPath, double tolerance) throws Exception {
+    private final ReconciliationCache cache;
 
-        // Pre-size maps for performance
-        Map<String, InvoiceRecord> tallyMap = loadFileToMap(tallyPath, 20000);
-        Map<String, InvoiceRecord> gstMap = loadFileToMap(gstPath, 20000);
+    public ReconciliationService(ReconciliationCache cache) {
+        this.cache = cache;
+    }
 
-        List<InvoiceRecord> missingInTally = new ArrayList<>(5000);
-        List<InvoiceRecord> missingInGST = new ArrayList<>(5000);
-        List<InvoiceRecord> mismatches = new ArrayList<>(5000);
+    // ================= STEP 1: FULL PROCESS =================
+    public ReconciliationResultDto process(String tallyFile,
+                                           String gstFile,
+                                           double tolerance) throws Exception {
 
-        // GST → Tally
+        Map<String, InvoiceRecord> tallyMap = loadFileToMap(tallyFile);
+        Map<String, InvoiceRecord> gstMap = loadFileToMap(gstFile);
+
+        ReconciliationContext ctx = new ReconciliationContext();
+        ctx.tallyMap = tallyMap;
+        ctx.gstMap = gstMap;
+
+        String jobId = UUID.randomUUID().toString();
+        cache.put(jobId, ctx);
+
+        List<InvoiceRecord> missingInTally = new ArrayList<>();
+        List<InvoiceRecord> missingInGST = new ArrayList<>();
+        List<InvoiceRecord> mismatches = new ArrayList<>();
+
         for (Map.Entry<String, InvoiceRecord> entry : gstMap.entrySet()) {
             String key = entry.getKey();
             InvoiceRecord tallyRec = tallyMap.get(key);
@@ -38,7 +54,6 @@ public class ReconciliationService {
             }
         }
 
-        // Tally → GST
         for (Map.Entry<String, InvoiceRecord> entry : tallyMap.entrySet()) {
             if (!gstMap.containsKey(entry.getKey())) {
                 missingInGST.add(entry.getValue());
@@ -46,7 +61,6 @@ public class ReconciliationService {
         }
 
         String baseDir = System.getProperty("java.io.tmpdir");
-
         String fileName = "Reconciliation_Report_" + System.currentTimeMillis() + ".xlsx";
         String outputPath = baseDir + "/" + fileName;
 
@@ -59,52 +73,50 @@ public class ReconciliationService {
                 tolerance
         );
 
-        ReconciliationResultDto result = new ReconciliationResultDto();
-        result.missingInTally = missingInTally.size();
-        result.missingInGST = missingInGST.size();
-        result.mismatches = mismatches.size();
-        result.fileName = fileName;
+        // RESPONSE
+        ReconciliationResultDto dto = new ReconciliationResultDto();
+        dto.jobId = jobId;
+        dto.fileName = fileName;
+        dto.missingInTally = missingInTally.size();
+        dto.missingInGST = missingInGST.size();
+        dto.mismatches = mismatches.size();
 
-        return result;
+        return dto;
     }
 
-    // ================= LOAD FILE =================
-    private Map<String, InvoiceRecord> loadFileToMap(String filePath, int initialCapacity) throws Exception {
+    // ================= STEP 2: FILTER REPORT (NEW ONLY) =================
+    public ReconciliationResultDto filterByField(String jobId,
+                                                 String field) throws Exception {
 
-        Map<String, InvoiceRecord> map = new HashMap<>(initialCapacity);
-        DataFormatter formatter = new DataFormatter();
+        ReconciliationContext ctx = cache.get(jobId);
+        Map<String, Double> tallyFieldSumMap = buildFilterFieldData(ctx.tallyMap, field);
+        Map<String, Double> gstFieldSumMap = buildFilterFieldData(ctx.gstMap, field);
 
-        try (InputStream is = new FileInputStream(filePath);
-             Workbook workbook = new XSSFWorkbook(is)) {
+        Set<String> allKeys = new HashSet<>();
+        allKeys.addAll(tallyFieldSumMap.keySet());
+        allKeys.addAll(gstFieldSumMap.keySet());
 
-            Sheet sheet = workbook.getSheetAt(0);
+        Set<String> matchedKeys = new HashSet<>();
 
-            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                if (row == null) continue;
+        for (String key : allKeys) {
 
-                String gstin = formatter.formatCellValue(row.getCell(1)).trim().toUpperCase();
-                String invoiceNo = formatter.formatCellValue(row.getCell(3)).trim().toUpperCase();
+            double tallySum = tallyFieldSumMap.getOrDefault(key, 0.0);
+            double gstSum = gstFieldSumMap.getOrDefault(key, 0.0);
 
-                String key = GeneralUtility.normalizeKeyPart(gstin) + "_" + GeneralUtility.normalizeKeyPart(invoiceNo);
-
-                InvoiceRecord record = new InvoiceRecord(
-                        formatter.formatCellValue(row.getCell(0)),
-                        gstin,
-                        formatter.formatCellValue(row.getCell(2)),
-                        invoiceNo,
-                        formatter.formatCellValue(row.getCell(4)),
-                        GeneralUtility.getNumeric(row.getCell(5)),
-                        GeneralUtility.getNumeric(row.getCell(6)),
-                        GeneralUtility.getNumeric(row.getCell(7)),
-                        GeneralUtility.getNumeric(row.getCell(8))
-                );
-
-                map.put(key, record);
+            if (Math.abs(tallySum - gstSum) < 0.0001) {
+                matchedKeys.add(key);
             }
         }
 
-        return map;
+        Set<String> unmatchedKeys = new HashSet<>(allKeys);
+        unmatchedKeys.removeAll(matchedKeys);
+
+        String fileName = generateFilteredExcel(ctx, matchedKeys, unmatchedKeys);
+
+        ReconciliationResultDto dto = new ReconciliationResultDto();
+        dto.fileName = fileName;
+
+        return dto;
     }
 
     // ================= FINAL REPORT =================
@@ -134,6 +146,7 @@ public class ReconciliationService {
         }
     }
 
+    // ================= Missing In Tally / Missing in GST SHEET =================
     private void writeNormalSheet(Workbook workbook,
                                   String sheetName,
                                   List<InvoiceRecord> data) {
@@ -173,12 +186,22 @@ public class ReconciliationService {
                                     double tolerance) {
 
         Sheet sheet = workbook.createSheet("Mismatch_Report");
-
         String[] columns = {
-                "Month", "GSTIN", "Party Name", "Invoice Number", "Invoice Date",
-                "Taxable Value", "IGST", "CGST", "Status"
+                "Month",
+                "GSTIN",
+                "Party Name",
+                "Invoice Number",
+                "Invoice Date",
+                "GST Taxable Value",
+                "Tally Taxable Value",
+                "GST IGST",
+                "Tally IGST",
+                "GST CGST",
+                "Tally CGST",
+                "Status"
         };
 
+        // Header
         Row header = sheet.createRow(0);
         for (int i = 0; i < columns.length; i++) {
             header.createCell(i).setCellValue(columns[i]);
@@ -188,9 +211,12 @@ public class ReconciliationService {
 
         for (InvoiceRecord gstRec : mismatches) {
             String key = GeneralUtility.normalizeKeyPart(gstRec.getGstin()) + "_" + GeneralUtility.normalizeKeyPart(gstRec.getInvoiceNumber());
+
             InvoiceRecord tallyRec = tallyMap.get(key);
 
             Row row = sheet.createRow(rowNum++);
+
+            // ================= COMMON INFO =================
             row.createCell(0).setCellValue(gstRec.getMonth());
             row.createCell(1).setCellValue(gstRec.getGstin());
             row.createCell(2).setCellValue(gstRec.getPartyName());
@@ -200,38 +226,194 @@ public class ReconciliationService {
             StringBuilder status = new StringBuilder();
             String direction = "";
 
-            // Taxable
-            Cell tv = row.createCell(5);
-            tv.setCellValue(gstRec.getTaxableValue());
+            // ================= TAXABLE VALUE =================
+
+            Cell gstTv = row.createCell(5);
+            gstTv.setCellValue(gstRec.getTaxableValue());
+
+            Cell tallyTv = row.createCell(6);
+            tallyTv.setCellValue(tallyRec.getTaxableValue());
+
             if (GeneralUtility.diff(gstRec.getTaxableValue(), tallyRec.getTaxableValue(), tolerance)) {
-                tv.setCellStyle(redStyle);
-                direction = GeneralUtility.getDirection(gstRec.getTaxableValue(), tallyRec.getTaxableValue());
-                GeneralUtility.appendStatus(status, "Tax. Value");
+                gstTv.setCellStyle(redStyle);
+                tallyTv.setCellStyle(redStyle);
+                direction = GeneralUtility.getDirection(
+                        gstRec.getTaxableValue(),
+                        tallyRec.getTaxableValue());
+                GeneralUtility.appendStatus(status, "Taxable Value");
             }
 
-            // IGST
-            Cell igst = row.createCell(6);
-            igst.setCellValue(gstRec.getIgst());
+            // ================= IGST =================
+            Cell gstIgst = row.createCell(7);
+            gstIgst.setCellValue(gstRec.getIgst());
+
+            Cell tallyIgst = row.createCell(8);
+            tallyIgst.setCellValue(tallyRec.getIgst());
+
             if (GeneralUtility.diff(gstRec.getIgst(), tallyRec.getIgst(), tolerance)) {
-                igst.setCellStyle(redStyle);
+                gstIgst.setCellStyle(redStyle);
+                tallyIgst.setCellStyle(redStyle);
                 if (direction.isEmpty()) {
                     direction = GeneralUtility.getDirection(gstRec.getIgst(), tallyRec.getIgst());
                 }
                 GeneralUtility.appendStatus(status, "IGST");
             }
 
-            // CGST
-            Cell cgst = row.createCell(7);
-            cgst.setCellValue(gstRec.getCgst());
+            // ================= CGST =================
+
+            Cell gstCgst = row.createCell(9);
+            gstCgst.setCellValue(gstRec.getCgst());
+
+            Cell tallyCgst = row.createCell(10);
+            tallyCgst.setCellValue(tallyRec.getCgst());
+
             if (GeneralUtility.diff(gstRec.getCgst(), tallyRec.getCgst(), tolerance)) {
-                cgst.setCellStyle(redStyle);
+                gstCgst.setCellStyle(redStyle);
+                tallyCgst.setCellStyle(redStyle);
+
                 if (direction.isEmpty()) {
                     direction = GeneralUtility.getDirection(gstRec.getCgst(), tallyRec.getCgst());
                 }
+
                 GeneralUtility.appendStatus(status, "CGST");
             }
 
-            row.createCell(8).setCellValue(direction + " (" + status + ")");
+            // ================= STATUS =================
+
+            row.createCell(11).setCellValue(direction + " (" + status + ")");
         }
     }
+
+    // ================= FILTERED REPORT ONLY =================
+    private String generateFilteredExcel(ReconciliationContext ctx,
+                                         Set<String> matchedGSTINs,
+                                         Set<String> unmatchedGSTINs) throws Exception {
+
+        String fileName = "Filtered_Report_" + System.currentTimeMillis() + ".xlsx";
+        String path = System.getProperty("java.io.tmpdir") + "/" + fileName;
+
+        SXSSFWorkbook workbook = new SXSSFWorkbook(100);
+
+        try (FileOutputStream fos = new FileOutputStream(path)) {
+
+            String[] columns = {
+                    "Month", "GSTIN", "Party Name", "Invoice Number",
+                    "Invoice Date", "Taxable Value", "IGST", "CGST", "SGST"
+            };
+
+            // ================= SHEET 1: Missing in Tally =================
+            Sheet gstFilteredSheet = workbook.createSheet("Missing_In_Tally_Filtered");
+            createHeader(gstFilteredSheet, columns);
+
+            appendRowsBySource(
+                    gstFilteredSheet,
+                    ctx.gstMap.values(),
+                    unmatchedGSTINs
+            );
+
+            // ================= SHEET 2: Missing in GST =================
+            Sheet tallyFilteredSheet = workbook.createSheet("Missing_In_GST_Filtered");
+            createHeader(tallyFilteredSheet, columns);
+            appendRowsBySource(
+                    tallyFilteredSheet,
+                    ctx.tallyMap.values(),
+                    unmatchedGSTINs
+            );
+            workbook.write(fos);
+        } finally {
+            workbook.dispose();
+        }
+        return fileName;
+    }
+
+    private void createHeader(Sheet sheet, String[] columns) {
+        Row header = sheet.createRow(0);
+        for (int i = 0; i < columns.length; i++) {
+            header.createCell(i).setCellValue(columns[i]);
+        }
+    }
+
+    private void appendRowsBySource(Sheet sheet,
+                                    Collection<InvoiceRecord> records,
+                                    Set<String> includeKeys) {
+
+        int rowNum = 1;
+
+        for (InvoiceRecord r : records) {
+
+            String key = GeneralUtility.normalizeKeyPart(r.getGstin())
+                    + "_" + GeneralUtility.normalizeKeyPart(r.getInvoiceNumber());
+
+            if (!includeKeys.contains(key)) continue;
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(r.getMonth());
+            row.createCell(1).setCellValue(r.getGstin());
+            row.createCell(2).setCellValue(r.getPartyName());
+            row.createCell(3).setCellValue(r.getInvoiceNumber());
+            row.createCell(4).setCellValue(r.getInvoiceDate());
+            row.createCell(5).setCellValue(r.getTaxableValue());
+            row.createCell(6).setCellValue(r.getIgst());
+            row.createCell(7).setCellValue(r.getCgst());
+            row.createCell(8).setCellValue(r.getSgst());
+        }
+    }
+
+    // ================= LOAD FILE =================
+    private Map<String, InvoiceRecord> loadFileToMap(String filePath) throws Exception {
+
+        Map<String, InvoiceRecord> map = new HashMap<>(20000);
+        DataFormatter formatter = new DataFormatter();
+
+        try (InputStream is = new FileInputStream(filePath);
+             Workbook workbook = new XSSFWorkbook(is)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+
+                String gstin = formatter.formatCellValue(row.getCell(1)).trim().toUpperCase();
+                String invoiceNo = formatter.formatCellValue(row.getCell(3)).trim().toUpperCase();
+
+                String key = GeneralUtility.normalizeKeyPart(gstin) + "_" + GeneralUtility.normalizeKeyPart(invoiceNo);
+
+                InvoiceRecord record = new InvoiceRecord(
+                        formatter.formatCellValue(row.getCell(0)),
+                        gstin,
+                        formatter.formatCellValue(row.getCell(2)),
+                        invoiceNo,
+                        formatter.formatCellValue(row.getCell(4)),
+                        GeneralUtility.getNumeric(row.getCell(5)),
+                        GeneralUtility.getNumeric(row.getCell(6)),
+                        GeneralUtility.getNumeric(row.getCell(7)),
+                        GeneralUtility.getNumeric(row.getCell(8))
+                );
+
+                map.put(key, record);
+            }
+        }
+
+        return map;
+    }
+
+    private Map<String, Double> buildFilterFieldData(Map<String, InvoiceRecord> map,
+                                                     String field) {
+
+        Map<String, Double> result = new HashMap<>();
+        for (Map.Entry<String, InvoiceRecord> entry : map.entrySet()) {
+            String key = entry.getKey();
+            InvoiceRecord r = entry.getValue();
+            double value = switch (field) {
+                case "taxableValue" -> r.getTaxableValue();
+                case "igst" -> r.getIgst();
+                case "cgst" -> r.getCgst();
+                case "sgst" -> r.getSgst();
+                default -> 0.0;
+            };
+            result.put(key, value);
+        }
+        return result;
+    }
+
 }

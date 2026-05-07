@@ -23,10 +23,6 @@ public class GeneralUtility {
         sb.append(field);
     }
 
-    public static String getCellValue(Cell cell) {
-        return (cell == null) ? "" : cell.toString().trim();
-    }
-
     public static double getNumeric(Cell cell) {
         if (cell == null) return 0;
         if (cell.getCellType() == CellType.NUMERIC) {
@@ -41,7 +37,6 @@ public class GeneralUtility {
 
     public static String normalizeKeyPart(String value) {
         if (value == null) return "";
-
         // Remove all non-alphanumeric characters
         return value.replaceAll("[^A-Za-z0-9]", "")
                 .toUpperCase()
