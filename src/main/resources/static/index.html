@@ -143,7 +143,7 @@
 
         try {
           const response = await fetch(
-            "http://localhost:8080/api/reconcile",
+            "/api/reconcile",
             {
               method: "POST",
               body: formData,
@@ -179,7 +179,7 @@
 
       try {
         const response = await fetch(
-          "http://localhost:8080/api/reconcile/filter",
+          "/api/reconcile/filter",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -266,7 +266,7 @@
     // ================= DOWNLOAD =================
     function downloadReport(fileName) {
       window.open(
-        `http://localhost:8080/api/download?fileName=${encodeURIComponent(fileName)}`,
+        `/api/download?fileName=${encodeURIComponent(fileName)}`,
         "_blank",
       );
     }

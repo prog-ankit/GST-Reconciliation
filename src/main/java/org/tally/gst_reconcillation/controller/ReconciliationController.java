@@ -1,9 +1,5 @@
 package org.tally.gst_reconcillation.controller;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.tally.gst_reconcillation.dto.FilterRequestDto;
@@ -13,6 +9,7 @@ import org.tally.gst_reconcillation.service.ReconciliationService;
 import java.io.File;
 import java.util.UUID;
 @RestController
+@CrossOrigin(origins = "https://gst-reconciliation-0sqz.onrender.com")
 @RequestMapping("/api/reconcile")
 public class ReconciliationController {
 
