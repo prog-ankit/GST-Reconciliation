@@ -23,16 +23,34 @@ public class GeneralUtility {
         sb.append(field);
     }
 
-    public static double getNumeric(Cell cell) {
-        if (cell == null) return 0;
-        if (cell.getCellType() == CellType.NUMERIC) {
-            return cell.getNumericCellValue();
-        }
-        try {
-            return Double.parseDouble(cell.toString().replace(",", ""));
-        } catch (Exception e) {
+    public static double getNumeric(Cell cell, FormulaEvaluator evaluator) {
+        if (cell == null) {
             return 0;
         }
+        try {
+            CellType type = cell.getCellType();
+            if (type == CellType.FORMULA) {
+                CellValue evaluated = evaluator.evaluate(cell);
+                if (evaluated != null &&
+                        evaluated.getCellType() == CellType.NUMERIC) {
+                    return evaluated.getNumberValue();
+                }
+                return 0;
+            }
+            if (type == CellType.NUMERIC) {
+                return cell.getNumericCellValue();
+            }
+            if (type == CellType.STRING) {
+                String value = cell.getStringCellValue().replace(",", "").trim();
+                if (value.isEmpty()) {
+                    return 0;
+                }
+                return Double.parseDouble(value);
+            }
+        } catch (Exception e) {
+            System.out.println("Failed parsing cell: " + cell);
+        }
+        return 0;
     }
 
     public static String normalizeKeyPart(String value) {
