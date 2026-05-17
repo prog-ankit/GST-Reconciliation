@@ -1,85 +1,126 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>GST Reconciliation Tool</title>
-
-    <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-    />
-
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
     <style>
-        body {
-          background-color: #f5f7fa;
-        }
-
-        .card {
-          border-radius: 12px;
-        }
-
-        #progressContainer {
-          display: none;
-        }
-
-        #filterSection {
-          display: none;
-        }
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        .brand-header { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: white; padding: 2rem 1rem; border-radius: 0 0 1.5rem 1.5rem; margin-bottom: 2rem; }
+        .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .card-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6c757d; margin-bottom: 0.75rem; }
+        .file-upload-box { border: 2px dashed #c8d6e5; border-radius: 10px; padding: 1.2rem; background: #f8fafc; transition: border-color 0.2s; cursor: pointer; }
+        .file-upload-box:hover { border-color: #1a73e8; }
+        .file-upload-box .bi { font-size: 1.6rem; color: #1a73e8; }
+        .file-upload-box input[type=file] { display: none; }
+        .file-label { font-size: 0.85rem; color: #495057; margin-top: 0.4rem; }
+        .file-name { font-size: 0.8rem; color: #1a73e8; font-weight: 600; margin-top: 0.3rem; word-break: break-all; }
+        .stat-card { border-radius: 12px; padding: 1.2rem; text-align: center; }
+        .stat-card .stat-number { font-size: 2rem; font-weight: 700; }
+        .stat-card .stat-label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .notes-box { background: #fff8e1; border-left: 4px solid #ffc107; border-radius: 6px; padding: 0.9rem 1rem; font-size: 0.83rem; }
+        .notes-box li { margin-bottom: 0.3rem; }
+        .progress { height: 10px; border-radius: 10px; }
+        .btn-reconcile { background: linear-gradient(135deg, #1a73e8, #0d47a1); border: none; padding: 0.65rem 2rem; font-weight: 600; letter-spacing: 0.03em; }
+        .btn-reconcile:hover { opacity: 0.92; }
+        .template-badge { background: #e8f0fe; color: #1a73e8; border-radius: 20px; padding: 0.35rem 1rem; font-size: 0.82rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+        .template-badge:hover { background: #d2e3fc; color: #0d47a1; }
+        #progressContainer { display: none; }
+        #resultSection { display: none; }
+        .spinner-border { width: 1rem; height: 1rem; border-width: 0.15em; }
     </style>
 </head>
-
 <body>
-<div class="container mt-5">
-    <div class="text-center mb-4">
-        <h2 class="fw-bold">GST Reconciliation Tool</h2>
-        <p class="text-muted">Compare Tally vs GST Portal Excel Data</p>
-    </div>
 
-    <!-- TEMPLATE -->
-    <div class="mb-3 text-center">
-        <a href="/templates/gst-template.xlsx" class="btn btn-sm btn-primary">
-            Download Sample Excel Template
+<div class="brand-header text-center">
+    <h3 class="fw-bold mb-1"><i class="bi bi-file-earmark-spreadsheet me-2"></i>GST Reconciliation Tool</h3>
+    <p class="mb-0 opacity-75" style="font-size:0.9rem">Compare Tally vs GST Portal data and generate a reconciliation report</p>
+</div>
+
+<div class="container pb-5" style="max-width: 720px;">
+
+    <!-- TEMPLATE DOWNLOAD -->
+    <div class="text-center mb-3">
+        <a href="/templates/gst-template.xlsx" class="template-badge">
+            <i class="bi bi-download"></i> Download Sample Excel Template
         </a>
     </div>
 
-    <!-- UPLOAD CARD -->
-    <div class="card shadow-sm p-4">
-        <form id="uploadForm">
-            <div class="mb-3">
-                <label class="form-label">Upload Tally File</label>
-                <input type="file" class="form-control" name="tally" required />
-            </div>
+    <!-- NOTES -->
+    <div class="notes-box mb-4">
+        <strong><i class="bi bi-info-circle me-1"></i>Before you upload, please note:</strong>
+        <ul class="mt-2 mb-0 ps-3">
+            <li>Both Tally and GST files must follow the <strong>same column layout</strong> as the sample template.</li>
+            <li>Columns expected: <strong>Month, GSTIN, Party Name, Invoice Number, Invoice Date, Taxable Value, IGST, SGST, CGST</strong></li>
+            <li>The <strong>Aggregate Field</strong> is used to compare total sums per GSTIN. If totals match, that GSTIN is excluded from all sheets.</li>
+            <li>Tolerance allows a small acceptable difference (e.g. rounding). Set to <strong>0</strong> for exact match.</li>
+            <li>The report is available for download immediately after processing. <strong>Download it right away</strong> — files are not stored permanently.</li>
+        </ul>
+    </div>
 
-            <div class="mb-3">
-                <label class="form-label">Upload GST File</label>
-                <input type="file" class="form-control" name="gst" required />
-            </div>
+    <!-- UPLOAD FORM -->
+    <div class="card p-4 mb-4">
+        <form id="uploadForm" novalidate>
 
-            <div class="mb-3">
-                <label class="form-label">Tolerance Limit (0–10)</label>
-                <input
-                        type="number"
-                        class="form-control"
-                        name="tolerance"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value="0"
-                        required
-                />
-            </div>
+            <p class="card-section-title"><i class="bi bi-upload me-1"></i>Upload Files</p>
 
-            <div class="row">
+            <div class="row g-3 mb-4">
                 <div class="col-md-6">
-                    <button class="btn btn-primary w-100">Reconcile</button>
+                    <label class="file-upload-box d-flex flex-column align-items-center w-100" for="tallyInput">
+                        <i class="bi bi-file-earmark-excel"></i>
+                        <span class="file-label">Click to upload <strong>Tally</strong> file</span>
+                        <span class="file-name" id="tallyFileName">No file chosen</span>
+                        <input type="file" id="tallyInput" name="tally" accept=".xlsx" required/>
+                    </label>
                 </div>
                 <div class="col-md-6">
-                    <button
-                            type="button"
-                            class="btn btn-outline-secondary w-100"
-                            onclick="resetAll()"
-                    >
-                        Reset
+                    <label class="file-upload-box d-flex flex-column align-items-center w-100" for="gstInput">
+                        <i class="bi bi-file-earmark-excel"></i>
+                        <span class="file-label">Click to upload <strong>GST Portal</strong> file</span>
+                        <span class="file-name" id="gstFileName">No file chosen</span>
+                        <input type="file" id="gstInput" name="gst" accept=".xlsx" required/>
+                    </label>
+                </div>
+            </div>
+
+            <p class="card-section-title"><i class="bi bi-sliders me-1"></i>Reconciliation Settings</p>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold" style="font-size:0.88rem">Aggregate Field
+                        <span class="text-muted fw-normal">(for GSTIN-level exclusion)</span>
+                    </label>
+                    <select name="aggregateField" class="form-select form-select-sm">
+                        <option value="taxableValue">Taxable Value</option>
+                        <option value="igst">IGST</option>
+                        <option value="sgst">SGST</option>
+                        <option value="cgst">CGST</option>
+                    </select>
+                    <div class="form-text">GSTINs whose aggregate of this field matches will be excluded entirely.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold" style="font-size:0.88rem">Tolerance Limit
+                        <span class="text-muted fw-normal">(0 = exact match)</span>
+                    </label>
+                    <input type="number" name="tolerance" class="form-control form-control-sm"
+                           min="0" max="10" step="0.1" value="0" required/>
+                    <div class="form-text">Acceptable difference in values (0–10).</div>
+                </div>
+            </div>
+
+            <div class="row g-2">
+                <div class="col-md-8">
+                    <button type="submit" class="btn btn-reconcile btn-primary w-100 text-white">
+                        <span id="btnSpinner" class="spinner-border text-white me-2 d-none"></span>
+                        <i class="bi bi-arrow-repeat me-1" id="btnIcon"></i>
+                        <span id="btnText">Reconcile</span>
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-outline-secondary w-100" onclick="resetAll()">
+                        <i class="bi bi-x-circle me-1"></i>Reset
                     </button>
                 </div>
             </div>
@@ -87,225 +128,187 @@
     </div>
 
     <!-- PROGRESS -->
-    <div id="progressContainer" class="mt-4">
-        <label class="form-label">Processing...</label>
+    <div id="progressContainer" class="mb-4">
+        <div class="d-flex justify-content-between mb-1" style="font-size:0.82rem">
+            <span class="text-muted">Processing your files...</span>
+            <span id="progressLabel" class="text-muted">0%</span>
+        </div>
         <div class="progress">
-            <div
-                    id="progressBar"
-                    class="progress-bar progress-bar-striped progress-bar-animated"
-                    style="width: 0%"
-            >
-                0%
-            </div>
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:0%"></div>
         </div>
     </div>
 
     <!-- RESULT -->
-    <div id="result" class="mt-4"></div>
+    <div id="resultSection"></div>
 
-    <!-- FILTER SECTION (Step 2) -->
-    <div id="filterSection" class="card p-4 mt-4 shadow-sm">
-        <h5 class="text-center mb-3">Post-Reconciliation Filter</h5>
+    <!-- ERROR -->
+    <div id="errorSection"></div>
 
-        <div class="mb-3">
-            <label class="form-label">Select Field for Matching</label>
-            <select id="fieldSelect" class="form-select">
-                <option value="taxableValue">Taxable Value</option>
-                <option value="igst">IGST</option>
-                <option value="cgst">CGST</option>
-                <option value="sgst">SGST</option>
-            </select>
-        </div>
-
-        <button class="btn btn-warning w-100" onclick="runSecondReport()">
-            Generate Filtered Report
-        </button>
-    </div>
 </div>
 
 <script>
-    let jobId = null;
     let progressInterval;
 
-    // ================= STEP 1 =================
-    document
-      .getElementById("uploadForm")
-      .addEventListener("submit", async function (e) {
+    // File name display
+    document.getElementById('tallyInput').addEventListener('change', function () {
+        document.getElementById('tallyFileName').textContent = this.files[0]?.name || 'No file chosen';
+    });
+    document.getElementById('gstInput').addEventListener('change', function () {
+        document.getElementById('gstFileName').textContent = this.files[0]?.name || 'No file chosen';
+    });
+
+    // ===================== SUBMIT =====================
+    document.getElementById('uploadForm').addEventListener('submit', async function (e) {
         e.preventDefault();
+
+        const tallyFile = document.getElementById('tallyInput').files[0];
+        const gstFile = document.getElementById('gstInput').files[0];
+
+        if (!tallyFile || !gstFile) {
+            showError('Please select both Tally and GST files before reconciling.');
+            return;
+        }
 
         const formData = new FormData(this);
 
-        document.getElementById("result").innerHTML = "";
-        document.getElementById("filterSection").style.display = "none";
-        document.getElementById("progressContainer").style.display = "block";
-
+        clearResults();
+        setLoading(true);
         startFakeProgress();
 
         try {
-          const response = await fetch(
-            "/api/reconcile",
-            {
-              method: "POST",
-              body: formData,
-            },
-          );
+            const response = await fetch('/api/reconcile', { method: 'POST', body: formData });
 
-          const data = await response.json();
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Server error');
+            }
 
-          stopProgress();
+            const data = await response.json();
+            stopProgress();
+            setLoading(false);
+            showResult(data);
 
-          jobId = data.jobId; // IMPORTANT
-
-          showResult(data);
-
-          // show second step UI
-          document.getElementById("filterSection").style.display = "block";
         } catch (err) {
-          stopProgress();
-          document.getElementById("result").innerHTML =
-            `<div class="alert alert-danger text-center">Error occurred</div>`;
+            stopProgress();
+            setLoading(false);
+            showError('Processing failed: ' + err.message);
         }
-      });
+    });
 
-    // ================= STEP 2 =================
-    async function runSecondReport() {
-      const field = document.getElementById("fieldSelect").value;
-      const btn = document.querySelector("#filterSection button");
-
-      btn.disabled = true;
-
-      document.getElementById("progressContainer").style.display = "block";
-      startFakeProgress();
-
-      try {
-        const response = await fetch(
-          "/api/reconcile/filter",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jobId: jobId,
-              field: field,
-            }),
-          },
-        );
-
-        const data = await response.json();
-
-        stopProgress();
-        showFilteredResult(data);
-      } catch (err) {
-        stopProgress();
-
-        document.getElementById("result").innerHTML =
-          `<div class="alert alert-danger text-center">Filter processing failed</div>`;
-      } finally {
-        btn.disabled = false;
-      }
-    }
-    // ================= RESULT 1 =================
+    // ===================== RESULT =====================
     function showResult(data) {
-      document.getElementById("result").innerHTML = `
-  <div class="card p-4 shadow-sm">
-      <h4 class="text-center mb-4">Reconciliation Summary</h4>
+        const total = data.missingInTally + data.missingInGST + data.mismatches;
+        const allClear = total === 0;
 
-      <div class="row text-center">
+        document.getElementById('resultSection').style.display = 'block';
+        document.getElementById('resultSection').innerHTML = `
+        <div class="card p-4">
+            <h5 class="fw-bold mb-1 text-center">Reconciliation Complete</h5>
+            <p class="text-center text-muted mb-4" style="font-size:0.85rem">
+                ${allClear
+                    ? '<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>All records matched. No discrepancies found.</span>'
+                    : `Found <strong>${total}</strong> record(s) requiring attention.`}
+            </p>
 
-          <div class="col-md-4">
-              <div class="alert alert-warning">
-                  <h3>${data.missingInTally}</h3>
-                  Missing in Tally
-              </div>
-          </div>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="stat-card bg-warning bg-opacity-10">
+                        <div class="stat-number text-warning">${data.missingInTally}</div>
+                        <div class="stat-label text-warning">Missing in Tally</div>
+                        <div class="text-muted mt-1" style="font-size:0.75rem">Present in GST, absent in Tally</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card bg-info bg-opacity-10">
+                        <div class="stat-number text-info">${data.missingInGST}</div>
+                        <div class="stat-label text-info">Missing in GST</div>
+                        <div class="text-muted mt-1" style="font-size:0.75rem">Present in Tally, absent in GST</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="stat-card bg-danger bg-opacity-10">
+                        <div class="stat-number text-danger">${data.mismatches}</div>
+                        <div class="stat-label text-danger">Mismatches</div>
+                        <div class="text-muted mt-1" style="font-size:0.75rem">Value differences found</div>
+                    </div>
+                </div>
+            </div>
 
-          <div class="col-md-4">
-              <div class="alert alert-info">
-                  <h3>${data.missingInGST}</h3>
-                  Missing in GST
-              </div>
-          </div>
-
-          <div class="col-md-4">
-              <div class="alert alert-danger">
-                  <h3>${data.mismatches}</h3>
-                  Mismatches
-              </div>
-          </div>
-
-      </div>
-
-      <div class="text-center mt-4">
-          <button class="btn btn-success btn-lg"
-              onclick="downloadReport('${data.fileName}')">
-              ⬇ Download Full Reconciliation Report
-          </button>
-      </div>
-
-  </div>
-`;
+            <div class="text-center">
+                <button class="btn btn-success px-4 py-2 fw-semibold" onclick="downloadReport('${data.fileName}')">
+                    <i class="bi bi-download me-2"></i>Download Reconciliation Report
+                </button>
+                <p class="text-muted mt-2 mb-0" style="font-size:0.78rem">
+                    <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
+                    Download immediately — report will not be available after server restart.
+                </p>
+            </div>
+        </div>`;
     }
 
-    // ================= RESULT 2 =================
-    function showFilteredResult(data) {
-      document.getElementById("result").innerHTML = `
-<div class="card p-4 shadow-sm mt-3">
-
-  <h4 class="text-center mb-3">Filtered Report Ready</h4>
-
-  <div class="text-center">
-      <button class="btn btn-success btn-lg"
-          onclick="downloadReport('${data.fileName}')">
-          ⬇ Download Filtered Report
-      </button>
-  </div>
-
-</div>
-`;
-    }
-
-    // ================= DOWNLOAD =================
+    // ===================== DOWNLOAD =====================
     function downloadReport(fileName) {
-      window.open(
-        `/api/download?fileName=${encodeURIComponent(fileName)}`,
-        "_blank",
-      );
+        window.open('/api/download?fileName=' + encodeURIComponent(fileName), '_blank');
     }
 
-    // ================= PROGRESS =================
+    // ===================== PROGRESS =====================
     function startFakeProgress() {
-      let progress = 0;
-      const bar = document.getElementById("progressBar");
-
-      progressInterval = setInterval(() => {
-        if (progress < 90) {
-          progress += Math.random() * 5;
-          progress = Math.min(progress, 90);
-
-          bar.style.width = progress + "%";
-          bar.innerText = Math.floor(progress) + "%";
-        }
-      }, 400);
+        document.getElementById('progressContainer').style.display = 'block';
+        let progress = 0;
+        const bar = document.getElementById('progressBar');
+        const label = document.getElementById('progressLabel');
+        progressInterval = setInterval(() => {
+            if (progress < 88) {
+                progress += Math.random() * 4;
+                progress = Math.min(progress, 88);
+                bar.style.width = progress + '%';
+                label.textContent = Math.floor(progress) + '%';
+            }
+        }, 350);
     }
 
     function stopProgress() {
-      clearInterval(progressInterval);
-
-      const bar = document.getElementById("progressBar");
-      bar.style.width = "100%";
-      bar.innerText = "100%";
-
-      setTimeout(() => {
-        document.getElementById("progressContainer").style.display = "none";
-      }, 400);
+        clearInterval(progressInterval);
+        const bar = document.getElementById('progressBar');
+        const label = document.getElementById('progressLabel');
+        bar.style.width = '100%';
+        label.textContent = '100%';
+        setTimeout(() => {
+            document.getElementById('progressContainer').style.display = 'none';
+        }, 500);
     }
 
-    // ================= RESET =================
+    // ===================== HELPERS =====================
+    function setLoading(loading) {
+        const btn = document.querySelector('#uploadForm button[type=submit]');
+        const spinner = document.getElementById('btnSpinner');
+        const icon = document.getElementById('btnIcon');
+        const text = document.getElementById('btnText');
+        btn.disabled = loading;
+        spinner.classList.toggle('d-none', !loading);
+        icon.classList.toggle('d-none', loading);
+        text.textContent = loading ? 'Processing...' : 'Reconcile';
+    }
+
+    function showError(msg) {
+        document.getElementById('errorSection').innerHTML =
+            `<div class="alert alert-danger d-flex align-items-center gap-2">
+                <i class="bi bi-x-octagon-fill"></i><span>${msg}</span>
+             </div>`;
+    }
+
+    function clearResults() {
+        document.getElementById('resultSection').style.display = 'none';
+        document.getElementById('resultSection').innerHTML = '';
+        document.getElementById('errorSection').innerHTML = '';
+    }
+
     function resetAll() {
-      document.getElementById("uploadForm").reset();
-      document.getElementById("result").innerHTML = "";
-      document.getElementById("filterSection").style.display = "none";
-      document.getElementById("progressContainer").style.display = "none";
-      jobId = null;
+        document.getElementById('uploadForm').reset();
+        document.getElementById('tallyFileName').textContent = 'No file chosen';
+        document.getElementById('gstFileName').textContent = 'No file chosen';
+        clearResults();
+        document.getElementById('progressContainer').style.display = 'none';
     }
 </script>
 </body>
