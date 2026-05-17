@@ -5,61 +5,59 @@ The tool compares records based on **GSTIN + Invoice Number**, identifies missin
 
 ---
 
-## 🚀 Features
+## Features
 
-* Upload **Tally** and **GST Portal** `.xlsx` files
-* Compare based on:
-
-  * GSTIN
-  * Invoice Number
-* Identify:
-
-  * Missing records in Tally
-  * Missing records in GST
-  * Value mismatches (Taxable Value, IGST, CGST)
-* Generate a **single Excel report** with:
-
-  * `Missing_In_Tally` sheet
-  * `Missing_In_GST` sheet
-  * `Mismatch_Report` sheet (with highlighted differences)
-* Download report directly from UI
-* Clean and responsive UI using Bootstrap
+- Upload **Tally** and **GST Portal** `.xlsx` files
+- **GSTIN-level aggregate exclusion** — if the selected aggregate field totals match for a GSTIN across both files, that GSTIN is excluded entirely from all report sheets
+- Configurable **tolerance limit** — acceptable difference threshold for value comparisons (0 = exact match)
+- Identify:
+  - Records missing in Tally
+  - Records missing in GST Portal
+  - Value mismatches (Taxable Value, IGST, SGST, CGST)
+- Generate a **single Excel report** with three sheets:
+  - `Missing_In_Tally`
+  - `Missing_In_GST`
+  - `Mismatch_Report` (mismatched fields highlighted in red)
+- Download report directly from the UI
+- Clean and responsive UI using Bootstrap 5
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Backend
-
-* Java 17+
-* Spring Boot
-* Apache POI (Excel processing)
+- Java 17
+- Spring Boot 4
+- Apache POI 5.2.5 — Excel processing (`XSSFWorkbook` for reading, `SXSSFWorkbook` for writing)
 
 ### Frontend
-
-* HTML
-* CSS (Bootstrap)
-* JavaScript (Fetch API)
+- HTML + CSS (Bootstrap 5.3)
+- JavaScript (Fetch API)
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 gst-reconciliation/
 │
 ├── src/main/java/org/tally/gst_reconcillation/
 │   ├── controller/
+│   │   ├── ReconciliationController.java
+│   │   └── DownloadController.java
 │   ├── service/
+│   │   └── ReconciliationService.java
 │   ├── model/
+│   │   └── InvoiceRecord.java
 │   ├── dto/
+│   │   └── ReconciliationResultDto.java
 │   └── util/
+│       └── GeneralUtility.java
 │
 ├── src/main/resources/
+│   ├── static/
+│   │   └── index.html
 │   └── application.properties
-│
-├── frontend/
-│   └── index.html
 │
 ├── pom.xml
 └── README.md
@@ -67,7 +65,7 @@ gst-reconciliation/
 
 ---
 
-## ⚙️ Setup & Run Locally
+## Setup & Run Locally
 
 ### 1. Clone Repository
 
@@ -85,20 +83,16 @@ mvn clean package
 ### 3. Run Application
 
 ```bash
-java -jar target/*.jar
+java -Xmx380m -jar target/*.jar
 ```
 
-App will start at:
-
-```
-http://localhost:8080
-```
+App will start at `http://localhost:8080`
 
 ---
 
-## 🌐 API Endpoints
+## API Endpoints
 
-### 🔹 Upload & Reconcile
+### Upload & Reconcile
 
 ```
 POST /api/reconcile
@@ -106,8 +100,12 @@ POST /api/reconcile
 
 **Form Data:**
 
-* `tally` → Tally Excel file
-* `gst` → GST Excel file
+| Field | Type | Description |
+|---|---|---|
+| `tally` | File | Tally Excel file (.xlsx) |
+| `gst` | File | GST Portal Excel file (.xlsx) |
+| `aggregateField` | String | Field for GSTIN-level exclusion (`taxableValue`, `igst`, `sgst`, `cgst`) |
+| `tolerance` | double | Acceptable value difference (e.g. `0.5`). Use `0` for exact match |
 
 **Response:**
 
@@ -122,82 +120,99 @@ POST /api/reconcile
 
 ---
 
-### 🔹 Download Report
+### Download Report
 
 ```
 GET /api/download?fileName=<fileName>
 ```
 
----
-
-## 📊 Output Report Format
-
-### 1. Missing_In_Tally
-
-Records present in GST but not in Tally
-
-### 2. Missing_In_GST
-
-Records present in Tally but not in GST
-
-### 3. Mismatch_Report
-
-* Highlights mismatched fields in **red**
-* Includes a **Status column**:
-
-  * `Less in Tally (IGST|Tax. Value)`
-  * `More in Tally (CGST)`
+Serves the generated report from the server's temp directory.
 
 ---
 
-## 💡 Key Logic
+## Excel File Format
 
-* Unique Key:
+Both Tally and GST Portal files must follow this exact column layout:
 
+| Col | Field |
+|---|---|
+| A | Month |
+| B | GSTIN |
+| C | Party Name |
+| D | Invoice Number |
+| E | Invoice Date |
+| F | Taxable Value |
+| G | IGST |
+| H | SGST |
+| I | CGST |
+
+A sample template is available for download from the UI at `/templates/gst-template.xlsx`.
+
+---
+
+## Output Report Format
+
+### Missing_In_Tally
+Records present in the GST Portal file but absent in Tally.
+
+### Missing_In_GST
+Records present in Tally but absent in the GST Portal file.
+
+### Mismatch_Report
+Side-by-side comparison of GST and Tally values for the same invoice:
+- Mismatched fields highlighted in **red**
+- Status column indicates direction and affected fields, e.g. `Less in Tally (IGST | SGST)`
+
+---
+
+## Key Logic
+
+**Unique Key:**
 ```
-GSTIN + "_" + InvoiceNumber
+normalizeKeyPart(GSTIN) + "_" + normalizeKeyPart(InvoiceNumber)
+```
+Key normalization strips all non-alphanumeric characters and uppercases — handles formatting inconsistencies between files.
+
+**GSTIN-level Exclusion:**
+```
+If |sum(aggregateField in Tally) - sum(aggregateField in GST)| < 0.0001 → exclude GSTIN entirely
 ```
 
-* Mismatch Condition:
-
+**Mismatch Condition:**
 ```
-|GST Value - Tally Value| > 0.01
+|GST Value - Tally Value| > tolerance
+```
+
+**Duplicate Invoice Handling:**
+Multiple records with the same GSTIN + Invoice Number are supported. Each GST record is matched to the closest Tally record; unmatched leftovers are reported as missing.
+
+---
+
+## Important Notes
+
+- Uploaded files and generated reports are stored in `System.getProperty("java.io.tmpdir")` — **not permanently stored**
+- Download the report immediately after generation — it will not survive a server restart
+- Formula cells in Excel are evaluated using Apache POI's `FormulaEvaluator`
+
+---
+
+## Recommended application.properties
+
+```properties
+spring.application.name=gst_reconcillation
+spring.servlet.multipart.max-file-size=5MB
+spring.servlet.multipart.max-request-size=10MB
 ```
 
 ---
 
-## ⚠️ Important Notes
+## CORS Configuration
 
-* Files are temporarily stored in:
-
-```
-System.getProperty("java.io.tmpdir")
+```java
+@CrossOrigin(origins = "*")
 ```
 
-* Reports are **not permanently stored**
-* Download immediately after generation
-
----
-
-## ☁️ Deployment (Render)
-
-### Steps:
-
-1. Push code to GitHub
-2. Create Web Service on Render
-3. Use:
-
-   * Build Command: `mvn clean package`
-   * Start Command: `java -jar target/*.jar`
-4. Set environment variable:
-
-```
-PORT=8080
-```
-
----
-
-## 🔐 CORS Configuration (if needed)
+Currently applied at the controller level. For global config:
 
 ```java
 registry.addMapping("/api/**")
@@ -207,24 +222,12 @@ registry.addMapping("/api/**")
 
 ---
 
-## 🧪 Future Improvements
-
-* Drag & drop file upload
-* Progress indicator for large files
-* Authentication & user sessions
-* Persistent storage (S3 / DB)
-* Support for large datasets (100k+ rows)
-
----
-
-## 👨‍💻 Author
+## Author
 
 **Ankit S. Bose**
 
 ---
 
-## 📄 License
+## License
 
 This project is for internal/learning use. You can modify and extend as needed.
-
----
