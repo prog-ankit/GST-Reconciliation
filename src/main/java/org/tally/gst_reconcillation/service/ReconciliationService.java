@@ -23,7 +23,7 @@ public class ReconciliationService {
 
         // STEP 1: Build GSTIN-level aggregate sums for the selected field
         // and collect GSTINs where both sides match → exclude entirely
-        Set<String> excludedGSTINs = resolveExcludedGSTINs(tallyMap, gstMap, aggregateField);
+        Set<String> excludedGSTINs = resolveExcludedGSTINs(tallyMap, gstMap, aggregateField, tolerance);
 
         // STEP 2: Classify records
         List<InvoiceRecord> missingInTally = new ArrayList<>();
@@ -46,12 +46,10 @@ public class ReconciliationService {
                 missingInGST.addAll(tallyRecords);
                 continue;
             }
-
             if (tallyRecords.isEmpty()) {
                 missingInTally.addAll(gstRecords);
                 continue;
             }
-
             List<InvoiceRecord> unmatchedTally = new ArrayList<>(tallyRecords);
 
             for (InvoiceRecord gstRec : gstRecords) {
@@ -93,7 +91,7 @@ public class ReconciliationService {
      */
     private Set<String> resolveExcludedGSTINs(Map<String, List<InvoiceRecord>> tallyMap,
                                                Map<String, List<InvoiceRecord>> gstMap,
-                                               String field) {
+                                               String field, double tolerance) {
         Map<String, Double> tallyTotals = buildGstinAggregates(tallyMap, field);
         Map<String, Double> gstTotals = buildGstinAggregates(gstMap, field);
 
@@ -105,7 +103,7 @@ public class ReconciliationService {
         for (String gstin : allGSTINs) {
             double tallyTotal = tallyTotals.getOrDefault(gstin, 0.0);
             double gstTotal = gstTotals.getOrDefault(gstin, 0.0);
-            if (Math.abs(tallyTotal - gstTotal) < 0.0001) {
+            if (Math.abs(tallyTotal - gstTotal) < tolerance) {
                 excluded.add(gstin);
             }
         }
